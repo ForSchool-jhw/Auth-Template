@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Plus } from "lucide-react";
 import {
@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 
 const authCodeSchema = z.object({
   serviceName: z.string().min(1, "Service name is required"),
@@ -31,6 +32,8 @@ type AuthCodeForm = z.infer<typeof authCodeSchema>;
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+
   const form = useForm<AuthCodeForm>({
     resolver: zodResolver(authCodeSchema),
     defaultValues: {
@@ -41,6 +44,8 @@ export default function HomePage() {
 
   function onSubmit(data: AuthCodeForm) {
     console.log(data); // We'll implement this later
+    setIsOpen(false);
+    form.reset();
   }
 
   return (
@@ -74,7 +79,7 @@ export default function HomePage() {
         </div>
 
         {/* Add Auth Code Dialog */}
-        <Dialog>
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
             <Button
               className="fixed bottom-8 right-8 h-14 w-14 rounded-full shadow-lg"
