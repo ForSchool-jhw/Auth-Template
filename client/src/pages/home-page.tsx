@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Plus } from "lucide-react";
+import { LogOut, Plus, Shield } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,9 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const authCodeSchema = z.object({
   serviceName: z.string().min(1, "Service name is required"),
@@ -30,15 +33,45 @@ const authCodeSchema = z.object({
 
 type AuthCodeForm = z.infer<typeof authCodeSchema>;
 
+interface TwoFactorSetupResponse {
+  secret: string;
+  otpauth_url: string;
+  backup_codes: string[];
+}
+
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [setup2FAOpen, setSetup2FAOpen] = useState(false);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const { toast } = useToast();
 
   const form = useForm<AuthCodeForm>({
     resolver: zodResolver(authCodeSchema),
     defaultValues: {
       serviceName: "",
       secretKey: "",
+    },
+  });
+
+  const setup2FAMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/2fa/setup");
+      return res.json() as Promise<TwoFactorSetupResponse>;
+    },
+    onSuccess: (data) => {
+      setBackupCodes(data.backup_codes);
+      toast({
+        title: "2FA Setup Complete",
+        description: "Save your backup codes in a secure location. You won't be able to see them again!",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Setup Failed",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -57,15 +90,25 @@ export default function HomePage() {
             <h1 className="text-2xl font-bold text-foreground">Welcome, {user?.username}!</h1>
             <p className="text-muted-foreground">Manage your authentication codes</p>
           </div>
-          <Button
-            variant="destructive"
-            onClick={() => logoutMutation.mutate()}
-            disabled={logoutMutation.isPending}
-            className="flex items-center"
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setSetup2FAOpen(true)}
+              disabled={user?.twoFactorEnabled}
+            >
+              <Shield className="mr-2 h-4 w-4" />
+              {user?.twoFactorEnabled ? "2FA Enabled" : "Setup 2FA"}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              className="flex items-center"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* Grid for auth codes - empty state */}
@@ -129,6 +172,45 @@ export default function HomePage() {
                 </Button>
               </form>
             </Form>
+          </DialogContent>
+        </Dialog>
+
+        {/* 2FA Setup Dialog */}
+        <Dialog open={setup2FAOpen} onOpenChange={setSetup2FAOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Setup Two-Factor Authentication</DialogTitle>
+            </DialogHeader>
+            {backupCodes.length > 0 ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Save these backup codes in a secure location. You'll need them if you lose access to your authenticator app.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {backupCodes.map((code, index) => (
+                    <code key={index} className="p-2 bg-muted rounded text-center">
+                      {code}
+                    </code>
+                  ))}
+                </div>
+                <Button onClick={() => setSetup2FAOpen(false)} className="w-full">
+                  Done
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Two-factor authentication adds an extra layer of security to your account.
+                </p>
+                <Button
+                  onClick={() => setup2FAMutation.mutate()}
+                  disabled={setup2FAMutation.isPending}
+                  className="w-full"
+                >
+                  Enable 2FA
+                </Button>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

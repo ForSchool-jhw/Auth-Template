@@ -6,6 +6,8 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
+import { loginRateLimiter, apiRateLimiter } from "./middleware/rate-limit";
+import { generateTwoFactorSecret, verifyTwoFactorToken, verifyBackupCode } from "./utils/two-factor";
 
 declare global {
   namespace Express {
@@ -31,8 +33,8 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET!,
-    resave: true, // Changed to true to ensure session is saved
-    saveUninitialized: true, // Changed to true to create session for all users
+    resave: true,
+    saveUninitialized: true,
     store: storage.sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === "production",
@@ -44,6 +46,7 @@ export function setupAuth(app: Express) {
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
+  app.use("/api", apiRateLimiter);
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
@@ -75,6 +78,55 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Setup 2FA
+  app.post("/api/2fa/setup", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      const { secret, codes } = await generateTwoFactorSecret(req.user.id);
+      res.json({ 
+        secret,
+        otpauth_url: `otpauth://totp/${req.user.username}?secret=${secret}&issuer=AuthApp`,
+        backup_codes: codes
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to setup 2FA" });
+    }
+  });
+
+  app.post("/api/2fa/verify", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: "Token is required" });
+
+    const user = await storage.getUser(req.user.id);
+    if (!user?.twoFactorSecret) {
+      return res.status(400).json({ message: "2FA is not enabled" });
+    }
+
+    const isValid = verifyTwoFactorToken(user.twoFactorSecret, token);
+    if (!isValid) {
+      return res.status(400).json({ message: "Invalid token" });
+    }
+
+    res.json({ message: "2FA verified successfully" });
+  });
+
+  app.post("/api/2fa/backup", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: "Backup code is required" });
+
+    const isValid = await verifyBackupCode(req.user.id, code);
+    if (!isValid) {
+      return res.status(400).json({ message: "Invalid backup code" });
+    }
+
+    res.json({ message: "Backup code verified successfully" });
+  });
+
   app.post("/api/register", async (req, res, next) => {
     try {
       const existingUser = await storage.getUserByUsername(req.body.username);
@@ -96,7 +148,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/login", (req, res, next) => {
+  app.post("/api/login", loginRateLimiter, (req, res, next) => {
     passport.authenticate("local", (err, user, info) => {
       if (err) return next(err);
       if (!user) {
