@@ -1,10 +1,47 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Plus, User } from "lucide-react";
+import { LogOut, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+const authCodeSchema = z.object({
+  serviceName: z.string().min(1, "Service name is required"),
+  secretKey: z.string().min(16, "Secret key must be at least 16 characters"),
+});
+
+type AuthCodeForm = z.infer<typeof authCodeSchema>;
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
+  const form = useForm<AuthCodeForm>({
+    resolver: zodResolver(authCodeSchema),
+    defaultValues: {
+      serviceName: "",
+      secretKey: "",
+    },
+  });
+
+  function onSubmit(data: AuthCodeForm) {
+    console.log(data); // We'll implement this later
+  }
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -36,13 +73,59 @@ export default function HomePage() {
           </Card>
         </div>
 
-        {/* Floating action button */}
-        <Button
-          className="fixed bottom-8 right-8 h-14 w-14 rounded-full shadow-lg"
-          size="icon"
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
+        {/* Add Auth Code Dialog */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              className="fixed bottom-8 right-8 h-14 w-14 rounded-full shadow-lg"
+              size="icon"
+            >
+              <Plus className="h-6 w-6" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Authentication Code</DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="serviceName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Service Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Google, GitHub, etc." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="secretKey"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Secret Key</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Enter your 2FA secret key"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full">
+                  Add Code
+                </Button>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
