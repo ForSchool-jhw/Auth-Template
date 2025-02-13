@@ -8,12 +8,12 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
   currentId: number;
 
   constructor() {
@@ -21,6 +21,7 @@ export class MemStorage implements IStorage {
     this.currentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // prune expired entries every 24h
+      stale: false, // prevent auto-pruning of "expired" sessions
     });
   }
 
