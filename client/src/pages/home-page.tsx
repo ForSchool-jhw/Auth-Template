@@ -22,15 +22,12 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AuthCode, insertAuthCodeSchema } from "@shared/schema";
 
-const authCodeSchema = z.object({
-  serviceName: z.string().min(1, "Service name is required"),
-  secretKey: z.string().min(16, "Secret key must be at least 16 characters"),
-});
-
+const authCodeSchema = insertAuthCodeSchema;
 type AuthCodeForm = z.infer<typeof authCodeSchema>;
 
 interface TwoFactorSetupResponse {
@@ -54,6 +51,33 @@ export default function HomePage() {
     },
   });
 
+  const { data: authCodes = [] } = useQuery<AuthCode[]>({
+    queryKey: ["/api/auth-codes"],
+  });
+
+  const createAuthCodeMutation = useMutation({
+    mutationFn: async (data: AuthCodeForm) => {
+      const res = await apiRequest("POST", "/api/auth-codes", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth-codes"] });
+      setIsOpen(false);
+      form.reset();
+      toast({
+        title: "Auth Code Added",
+        description: "Your authentication code has been saved successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Add Auth Code",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const setup2FAMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/2fa/setup");
@@ -74,12 +98,6 @@ export default function HomePage() {
       });
     },
   });
-
-  function onSubmit(data: AuthCodeForm) {
-    console.log(data); // We'll implement this later
-    setIsOpen(false);
-    form.reset();
-  }
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -111,14 +129,25 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Grid for auth codes - empty state */}
+        {/* Grid for auth codes */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card className="p-6 border-2 border-dashed border-muted">
-            <div className="text-center text-muted-foreground">
-              <p>No authentication codes yet</p>
-              <p className="text-sm">Click the + button to add one</p>
-            </div>
-          </Card>
+          {authCodes.length === 0 ? (
+            <Card className="p-6 border-2 border-dashed border-muted">
+              <div className="text-center text-muted-foreground">
+                <p>No authentication codes yet</p>
+                <p className="text-sm">Click the + button to add one</p>
+              </div>
+            </Card>
+          ) : (
+            authCodes.map((code) => (
+              <Card key={code.id} className="p-6">
+                <h3 className="font-semibold mb-2">{code.serviceName}</h3>
+                <p className="text-sm text-muted-foreground">
+                  Added on {new Date(code.createdAt).toLocaleDateString()}
+                </p>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Add Auth Code Dialog */}
@@ -136,7 +165,7 @@ export default function HomePage() {
               <DialogTitle>Add Authentication Code</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit((data) => createAuthCodeMutation.mutate(data))} className="space-y-4">
                 <FormField
                   control={form.control}
                   name="serviceName"
@@ -167,7 +196,11 @@ export default function HomePage() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">
+                <Button 
+                  type="submit" 
+                  className="w-full"
+                  disabled={createAuthCodeMutation.isPending}
+                >
                   Add Code
                 </Button>
               </form>
