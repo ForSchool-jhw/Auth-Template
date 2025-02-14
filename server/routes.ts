@@ -14,23 +14,29 @@ export function registerRoutes(app: Express): Server {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
-      // Store the secret key as is - it will be encoded when generating TOTP
+      // Clean up and normalize the secret key for Google Auth compatibility
+      const normalizedSecret = req.body.secretKey.replace(/\s+/g, '').toUpperCase();
+
+      // Store the normalized secret
       const [authCode] = await db
         .insert(authCodes)
         .values({
           userId: req.user.id,
           serviceName: req.body.serviceName,
-          secretKey: req.body.secretKey,
-          totpSecret: req.body.secretKey, // Use the same secret for TOTP generation
+          secretKey: normalizedSecret, // Store the normalized version
+          totpSecret: normalizedSecret,
         })
         .returning();
 
-      // Return the auth code with its current TOTP code
+      // Generate initial TOTP code
+      const currentCode = generateTOTP(authCode.totpSecret);
+
       res.status(201).json({
         ...authCode,
-        currentCode: generateTOTP(authCode.totpSecret)
+        currentCode
       });
     } catch (error) {
+      console.error('Error creating auth code:', error);
       res.status(500).json({ message: "Failed to create auth code" });
     }
   });
@@ -44,46 +50,42 @@ export function registerRoutes(app: Express): Server {
         .from(authCodes)
         .where(eq(authCodes.userId, req.user.id));
 
-      // Generate current TOTP codes for each auth code with different time offsets
-      const codesWithTOTP = codes.map((code, index) => ({
+      // Generate current TOTP codes
+      const codesWithTOTP = codes.map(code => ({
         ...code,
-        // Use a different time offset for each code to ensure they're different
-        currentCode: generateTOTP(code.totpSecret, index * 2) // 2-second offset per code
+        currentCode: generateTOTP(code.totpSecret)
       }));
 
       res.json(codesWithTOTP);
     } catch (error) {
+      console.error('Error fetching auth codes:', error);
       res.status(500).json({ message: "Failed to fetch auth codes" });
     }
   });
 
-  // New endpoint to refresh a specific auth code
   app.post("/api/auth-codes/:id/refresh", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
-      const authCode = await db
+      const [code] = await db
         .select()
         .from(authCodes)
-        .where(eq(authCodes.id, parseInt(req.params.id)))
-        .limit(1);
+        .where(eq(authCodes.id, parseInt(req.params.id)));
 
-      if (!authCode.length) {
+      if (!code) {
         return res.status(404).json({ message: "Auth code not found" });
       }
 
-      const code = authCode[0];
-
-      // Check if the auth code belongs to the authenticated user
       if (code.userId !== req.user.id) {
         return res.status(403).json({ message: "Not authorized" });
       }
 
-      // Generate new TOTP code with current timestamp
+      // Generate new TOTP code
       const currentCode = generateTOTP(code.totpSecret);
 
       res.json({ ...code, currentCode });
     } catch (error) {
+      console.error('Error refreshing auth code:', error);
       res.status(500).json({ message: "Failed to refresh auth code" });
     }
   });

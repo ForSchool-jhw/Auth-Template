@@ -1,17 +1,16 @@
 import { authenticator } from 'otplib';
 
-// Configure otplib to follow standard TOTP specifications (RFC 6238)
-// This matches GitHub's and PyPI's TOTP implementation
+// Configure otplib to match Google Authenticator's specifications
 authenticator.options = {
-  window: 1,        // Allow 1 step before/after for time drift
-  step: 30,         // 30 second time step (standard)
-  digits: 6,        // 6 digits (standard)
-  algorithm: 'sha1'  // SHA1 algorithm (standard)
+  window: [1, 0], // Allow one step back for time drift
+  step: 30,      // 30-second time window (Google Auth default)
+  digits: 6,     // 6-digit codes (Google Auth default)
+  encoding: 'hex' // Use hex encoding internally
 };
 
-// Generate a new TOTP secret (automatically uses base32 encoding)
+// Generate a new TOTP secret in Google Auth format
 export function generateSecret(): string {
-  return authenticator.generateSecret(20); // 20 bytes = 160 bits, standard for TOTP
+  return authenticator.generateSecret(); // Generates a proper base32 secret
 }
 
 // Generate current TOTP code from a secret
@@ -19,39 +18,31 @@ export function generateTOTP(secret: string, timeOffset: number = 0): string {
   try {
     // Clean up the secret by removing spaces and converting to uppercase
     const cleanSecret = secret.replace(/\s+/g, '').toUpperCase();
-    // Ensure the secret is properly base32 encoded and use current time
-    const encodedSecret = authenticator.encode(cleanSecret);
 
     // Calculate the time with offset
     const time = Math.floor(Date.now() / 1000) + timeOffset;
-    return authenticator.generate(encodedSecret, time);
+    console.log(`Generating TOTP for secret: ${cleanSecret.slice(0, 4)}... with offset step ${timeOffset}. Time step: ${time}`);
+
+    return authenticator.generate(cleanSecret);
   } catch (error) {
-    // If the secret is already properly encoded, use it directly
-    const cleanSecret = secret.replace(/\s+/g, '').toUpperCase();
-    // Use current time for generation
-    const time = Math.floor(Date.now() / 1000) + timeOffset;
-    return authenticator.generate(cleanSecret, time);
+    console.error('Error generating TOTP:', error);
+    return '000000'; // Return a clearly invalid code
   }
 }
 
 // Verify a TOTP code
 export function verifyTOTP(token: string, secret: string): boolean {
   try {
-    // Clean up the secret by removing spaces and converting to uppercase
     const cleanSecret = secret.replace(/\s+/g, '').toUpperCase();
-    // Ensure the secret is properly base32 encoded
-    return authenticator.verify({ token, secret: authenticator.encode(cleanSecret) });
+    return authenticator.check(token, cleanSecret);
   } catch (error) {
-    // If the secret is already properly encoded, use it directly
-    const cleanSecret = secret.replace(/\s+/g, '').toUpperCase();
-    return authenticator.verify({ token, secret: cleanSecret });
+    console.error('Error verifying TOTP:', error);
+    return false;
   }
 }
 
-// Generate the otpauth URL for QR codes
+// Generate the otpauth URL for QR codes (Google Auth format)
 export function generateOTPAuthURL(username: string, secret: string, issuer: string = 'AuthService'): string {
-  // Clean up and encode the secret
   const cleanSecret = secret.replace(/\s+/g, '').toUpperCase();
-  const encodedSecret = authenticator.encode(cleanSecret);
-  return authenticator.keyuri(username, issuer, encodedSecret);
+  return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(username)}?secret=${cleanSecret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }

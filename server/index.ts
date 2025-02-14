@@ -9,6 +9,7 @@ app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Add request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -40,12 +41,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  log('Starting server initialization...');
   const server = registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
+    log(`Error: ${status} - ${message}`);
     res.status(status).json({ message });
     throw err;
   });
@@ -54,15 +56,18 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
+    log('Setting up Vite development server...');
     await setupVite(app, server);
   } else {
+    log('Setting up static file serving...');
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 8000
-  // this serves both the API and the client
-  const PORT = process.env.PORT || 8000;
-  server.listen(PORT, "0.0.0.0", () => {
-    log(`serving on port ${PORT}`);
+  // Use port 5000 to match .replit configuration
+  const PORT = process.env.PORT || 5000;
+  log(`Attempting to start server on port ${PORT}...`);
+
+  server.listen(PORT, () => {
+    log(`Server successfully started and listening on port ${PORT}`);
   });
 })();
