@@ -83,8 +83,14 @@ export default function HomePage() {
       const res = await apiRequest("POST", `/api/auth-codes/${id}/refresh`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth-codes"] });
+    onSuccess: (data) => {
+      // Update the specific code in the cache
+      queryClient.setQueryData<AuthCode[]>(["/api/auth-codes"], (oldData) => {
+        if (!oldData) return oldData;
+        return oldData.map((code) =>
+          code.id === data.id ? { ...code, currentCode: data.currentCode } : code
+        );
+      });
       toast({
         title: "Code Refreshed",
         description: "Your authentication code has been updated.",
