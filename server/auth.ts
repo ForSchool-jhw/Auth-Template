@@ -1,5 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as GitHubStrategy } from "passport-github2";
 import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -8,7 +9,7 @@ import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { loginRateLimiter, apiRateLimiter } from "./middleware/rate-limit";
 import { generateSecret, verifyTOTP, generateOTPAuthURL } from "./utils/totp";
-import { generateBackupCodes, storeBackupCodes } from "./utils/two-factor";
+import { generateBackupCodes, storeBackupCodes, verifyBackupCode } from "./utils/two-factor";
 
 declare global {
   namespace Express {
@@ -32,8 +33,9 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
+  // Session configuration with better security settings
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET!,
+    secret: process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
     resave: true,
     saveUninitialized: true,
     store: storage.sessionStore,
@@ -49,19 +51,37 @@ export function setupAuth(app: Express) {
   app.use(passport.session());
   app.use("/api", apiRateLimiter);
 
-  passport.use(
-    new LocalStrategy(async (username, password, done) => {
-      try {
-        const user = await storage.getUserByUsername(username);
-        if (!user || !(await comparePasswords(password, user.password))) {
-          return done(null, false, { message: "Invalid username or password" });
+  // GitHub Strategy
+  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+    console.warn("GitHub OAuth credentials not found. GitHub authentication will not work.");
+  } else {
+    passport.use(
+      new GitHubStrategy(
+        {
+          clientID: process.env.GITHUB_CLIENT_ID,
+          clientSecret: process.env.GITHUB_CLIENT_SECRET,
+          callbackURL: "/api/auth/github/callback",
+        },
+        async (accessToken: string, refreshToken: string, profile: any, done: any) => {
+          try {
+            console.log(`GitHub auth attempt for profile ID: ${profile.id}`);
+            let user = await storage.getUserByUsername(`github:${profile.id}`);
+            if (!user) {
+              console.log(`Creating new user for GitHub profile ID: ${profile.id}`);
+              user = await storage.createUser({
+                username: `github:${profile.id}`,
+                password: await hashPassword(randomBytes(32).toString("hex")),
+              });
+            }
+            return done(null, user);
+          } catch (err) {
+            console.error('Error in GitHub authentication:', err);
+            return done(err);
+          }
         }
-        return done(null, user);
-      } catch (err) {
-        return done(err);
-      }
-    }),
-  );
+      )
+    );
+  }
 
   passport.serializeUser((user, done) => {
     done(null, user.id);
@@ -79,7 +99,37 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Setup 2FA
+  // GitHub auth routes with better error handling
+  app.get("/api/auth/github", (req, res, next) => {
+    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+      res.status(503).json({ message: "GitHub authentication is not configured" });
+      return;
+    }
+    passport.authenticate("github")(req, res, next);
+  });
+
+  app.get(
+    "/api/auth/github/callback",
+    passport.authenticate("github", {
+      successRedirect: "/",
+      failureRedirect: "/auth",
+    })
+  );
+
+  // Local Strategy
+  passport.use(
+    new LocalStrategy(async (username, password, done) => {
+      try {
+        const user = await storage.getUserByUsername(username);
+        if (!user || !(await comparePasswords(password, user.password))) {
+          return done(null, false, { message: "Invalid username or password" });
+        }
+        return done(null, user);
+      } catch (err) {
+        return done(err);
+      }
+    }),
+  );
   app.post("/api/2fa/setup", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
@@ -88,7 +138,6 @@ export function setupAuth(app: Express) {
       const backupCodes = await generateBackupCodes();
       await storeBackupCodes(req.user.id, backupCodes);
 
-      // Generate otpauth URL using the standardized format
       const otpauthUrl = generateOTPAuthURL(
         req.user.username,
         secret,
@@ -163,7 +212,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", loginRateLimiter, (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) return next(err);
       if (!user) {
         return res.status(401).json({ message: info?.message || "Authentication failed" });

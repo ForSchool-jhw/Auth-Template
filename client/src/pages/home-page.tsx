@@ -78,19 +78,18 @@ export default function HomePage() {
     },
   });
 
-  const refreshCodeMutation = useMutation({
+  const refreshMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/auth-codes/${id}/refresh`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to refresh code");
+      }
       return res.json();
     },
     onSuccess: (data) => {
-      // Update the specific code in the cache
-      queryClient.setQueryData<AuthCode[]>(["/api/auth-codes"], (oldData) => {
-        if (!oldData) return oldData;
-        return oldData.map((code) =>
-          code.id === data.id ? { ...code, currentCode: data.currentCode } : code
-        );
-      });
+      // Simply invalidate the query to fetch fresh data
+      queryClient.invalidateQueries({ queryKey: ["/api/auth-codes"] });
       toast({
         title: "Code Refreshed",
         description: "Your authentication code has been updated.",
@@ -98,7 +97,7 @@ export default function HomePage() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to Refresh Code",
+        title: "Refresh Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -182,8 +181,8 @@ export default function HomePage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => refreshCodeMutation.mutate(code.id)}
-                    disabled={refreshCodeMutation.isPending}
+                    onClick={() => refreshMutation.mutate(code.id)}
+                    disabled={refreshMutation.isPending}
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>

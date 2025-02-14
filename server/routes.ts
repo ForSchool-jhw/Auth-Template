@@ -63,14 +63,20 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Auth code refresh endpoint
   app.post("/api/auth-codes/:id/refresh", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
-      const [code] = await db
-        .select()
-        .from(authCodes)
-        .where(eq(authCodes.id, parseInt(req.params.id)));
+      // Parse ID with error handling
+      const authCodeId = parseInt(req.params.id);
+      if (isNaN(authCodeId)) {
+        return res.status(400).json({ message: "Invalid auth code ID" });
+      }
+
+      const code = await db.query.authCodes.findFirst({
+        where: eq(authCodes.id, authCodeId)
+      });
 
       if (!code) {
         return res.status(404).json({ message: "Auth code not found" });
