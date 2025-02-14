@@ -1,15 +1,24 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/hooks/use-auth";
-import { Redirect } from "wouter";
+import { Redirect, useLocation } from "wouter";
 import { Loader2, UserPlus, LogIn } from "lucide-react";
 import { SiGithub } from "react-icons/si";
+import { OAuthErrorTooltip } from "@/components/ui/oauth-error-tooltip";
+import { useEffect, useState } from "react";
 
 const formSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
@@ -23,6 +32,16 @@ const formSchema = z.object({
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // Get error from URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    if (error) {
+      setOauthError(error);
+    }
+  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -43,6 +62,11 @@ export default function AuthPage() {
           <CardHeader className="text-center">
             <h1 className="text-2xl font-bold text-foreground">Welcome</h1>
             <p className="text-muted-foreground">Sign in or create an account to continue</p>
+            {oauthError && (
+              <div className="mt-4">
+                <OAuthErrorTooltip error={oauthError} />
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login">
