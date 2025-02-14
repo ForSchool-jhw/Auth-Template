@@ -1,13 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
-import { RefreshCw, LogOut, Plus, Shield } from "lucide-react";
+import { RefreshCw, LogOut, Plus, Shield, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -41,6 +43,8 @@ export default function HomePage() {
   const [isOpen, setIsOpen] = useState(false);
   const [setup2FAOpen, setSetup2FAOpen] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedCodeId, setSelectedCodeId] = useState<number | null>(null);
   const { toast } = useToast();
 
   const form = useForm<AuthCodeForm>({
@@ -78,6 +82,32 @@ export default function HomePage() {
     },
   });
 
+  const deleteAuthCodeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/auth-codes/${id}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete code");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth-codes"] });
+      toast({
+        title: "Auth Code Deleted",
+        description: "Your authentication code has been deleted successfully.",
+      });
+      setDeleteDialogOpen(false);
+      setSelectedCodeId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delete Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const refreshMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("POST", `/api/auth-codes/${id}/refresh`);
@@ -87,8 +117,7 @@ export default function HomePage() {
       }
       return res.json();
     },
-    onSuccess: (data) => {
-      // Simply invalidate the query to fetch fresh data
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth-codes"] });
       toast({
         title: "Code Refreshed",
@@ -129,10 +158,21 @@ export default function HomePage() {
   useEffect(() => {
     const interval = setInterval(() => {
       refetchAuthCodes();
-    }, 20000); // Refresh slightly faster than the 30-second TOTP window
+    }, 20000);
 
     return () => clearInterval(interval);
   }, [refetchAuthCodes]);
+
+  const handleDeleteClick = (id: number) => {
+    setSelectedCodeId(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (selectedCodeId) {
+      deleteAuthCodeMutation.mutate(selectedCodeId);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -178,14 +218,24 @@ export default function HomePage() {
               <Card key={code.id} className="p-6">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="font-semibold">{code.serviceName}</h3>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => refreshMutation.mutate(code.id)}
-                    disabled={refreshMutation.isPending}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => refreshMutation.mutate(code.id)}
+                      disabled={refreshMutation.isPending}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteClick(code.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="font-mono text-2xl mb-4 text-primary">
                   {code.currentCode}
@@ -197,6 +247,40 @@ export default function HomePage() {
             ))
           )}
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Authentication Code</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this authentication code? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={deleteAuthCodeMutation.isPending}
+              >
+                {deleteAuthCodeMutation.isPending ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Add Auth Code Dialog */}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>

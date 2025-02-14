@@ -41,6 +41,40 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.delete("/api/auth-codes/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      const authCodeId = parseInt(req.params.id);
+      if (isNaN(authCodeId)) {
+        return res.status(400).json({ message: "Invalid auth code ID" });
+      }
+
+      // First check if the auth code exists and belongs to the user
+      const authCode = await db.query.authCodes.findFirst({
+        where: eq(authCodes.id, authCodeId)
+      });
+
+      if (!authCode) {
+        return res.status(404).json({ message: "Auth code not found" });
+      }
+
+      if (authCode.userId !== req.user.id) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      // Delete the auth code
+      await db
+        .delete(authCodes)
+        .where(eq(authCodes.id, authCodeId));
+
+      res.sendStatus(200);
+    } catch (error) {
+      console.error('Error deleting auth code:', error);
+      res.status(500).json({ message: "Failed to delete auth code" });
+    }
+  });
+
   app.get("/api/auth-codes", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
