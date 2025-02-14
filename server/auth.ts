@@ -51,16 +51,23 @@ export function setupAuth(app: Express) {
   app.use(passport.session());
   app.use("/api", apiRateLimiter);
 
-  // GitHub Strategy
+  // GitHub Strategy with better error handling
   if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
     console.warn("GitHub OAuth credentials not found. GitHub authentication will not work.");
   } else {
+    const callbackURL = process.env.NODE_ENV === "production"
+      ? `https://SecureSignIn.alexlater65.repl.co/api/auth/github/callback`
+      : "http://localhost:5000/api/auth/github/callback";
+
+    console.log('Configuring GitHub strategy with callback URL:', callbackURL);
+    console.log('Please ensure this matches exactly with the callback URL in your GitHub OAuth application settings');
+
     passport.use(
       new GitHubStrategy(
         {
           clientID: process.env.GITHUB_CLIENT_ID,
           clientSecret: process.env.GITHUB_CLIENT_SECRET,
-          callbackURL: "/api/auth/github/callback",
+          callbackURL,
         },
         async (accessToken: string, refreshToken: string, profile: any, done: any) => {
           try {
@@ -99,21 +106,35 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // GitHub auth routes with better error handling
+  // GitHub auth routes with better error logging
   app.get("/api/auth/github", (req, res, next) => {
     if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
       res.status(503).json({ message: "GitHub authentication is not configured" });
       return;
     }
-    passport.authenticate("github")(req, res, next);
+    console.log('Initiating GitHub authentication flow');
+    passport.authenticate("github", {
+      scope: ['user:email'],
+      state: randomBytes(16).toString('hex')
+    })(req, res, next);
   });
 
   app.get(
     "/api/auth/github/callback",
-    passport.authenticate("github", {
-      successRedirect: "/",
-      failureRedirect: "/auth",
-    })
+    (req, res, next) => {
+      console.log('Received GitHub callback with query:', req.query);
+      if (req.query.error) {
+        console.error('GitHub OAuth error:', req.query.error);
+        console.error('Error description:', req.query.error_description);
+        return res.redirect('/auth?error=' + encodeURIComponent(req.query.error_description as string));
+      }
+
+      passport.authenticate("github", {
+        successRedirect: "/",
+        failureRedirect: "/auth",
+        failureMessage: true
+      })(req, res, next);
+    }
   );
 
   // Local Strategy
