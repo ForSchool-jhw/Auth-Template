@@ -55,10 +55,13 @@ export function setupAuth(app: Express) {
   if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
     console.warn("GitHub OAuth credentials not found. GitHub authentication will not work.");
   } else {
-    const callbackURL = process.env.NODE_ENV === "production"
+    // Determine if we're in production by checking if we're running on Replit
+    const isProduction = process.env.REPL_SLUG && process.env.REPL_OWNER;
+    const callbackURL = isProduction
       ? `https://SecureSignIn.alexlater65.repl.co/api/auth/github/callback`
       : "http://localhost:5000/api/auth/github/callback";
 
+    console.log('Environment:', isProduction ? 'production' : 'development');
     console.log('Configuring GitHub strategy with callback URL:', callbackURL);
     console.log('Please ensure this matches exactly with the callback URL in your GitHub OAuth application settings');
 
