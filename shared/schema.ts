@@ -31,7 +31,7 @@ export const authCodes = pgTable("auth_codes", {
   userId: integer("user_id").references(() => users.id),
   serviceName: text("service_name").notNull(),
   secretKey: text("secret_key").notNull(),
-  totpSecret: text("totp_secret").notNull().default(''),
+  totpSecret: text("totp_secret").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -40,10 +40,15 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
-export const insertAuthCodeSchema = createInsertSchema(authCodes).pick({
-  serviceName: true,
-  secretKey: true,
-});
+export const insertAuthCodeSchema = createInsertSchema(authCodes)
+  .pick({
+    serviceName: true,
+    secretKey: true,
+  })
+  .extend({
+    serviceName: z.string().min(1, "Service name is required"),
+    secretKey: z.string().min(16, "Secret key must be at least 16 characters"),
+  });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;

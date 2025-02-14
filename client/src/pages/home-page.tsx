@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Plus, Shield } from "lucide-react";
+import { RefreshCw, LogOut, Plus, Shield } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +51,7 @@ export default function HomePage() {
     },
   });
 
-  const { data: authCodes = [] } = useQuery<AuthCode[]>({
+  const { data: authCodes = [], refetch: refetchAuthCodes } = useQuery<AuthCode[]>({
     queryKey: ["/api/auth-codes"],
   });
 
@@ -78,6 +78,27 @@ export default function HomePage() {
     },
   });
 
+  const refreshCodeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/auth-codes/${id}/refresh`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth-codes"] });
+      toast({
+        title: "Code Refreshed",
+        description: "Your authentication code has been updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Refresh Code",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const setup2FAMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/2fa/setup");
@@ -98,6 +119,15 @@ export default function HomePage() {
       });
     },
   });
+
+  // Auto-refresh codes every 20 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetchAuthCodes();
+    }, 20000); // Refresh slightly faster than the 30-second TOTP window
+
+    return () => clearInterval(interval);
+  }, [refetchAuthCodes]);
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -141,7 +171,17 @@ export default function HomePage() {
           ) : (
             authCodes.map((code) => (
               <Card key={code.id} className="p-6">
-                <h3 className="font-semibold mb-2">{code.serviceName}</h3>
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-semibold">{code.serviceName}</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => refreshCodeMutation.mutate(code.id)}
+                    disabled={refreshCodeMutation.isPending}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
                 <div className="font-mono text-2xl mb-4 text-primary">
                   {code.currentCode}
                 </div>

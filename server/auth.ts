@@ -7,7 +7,8 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { loginRateLimiter, apiRateLimiter } from "./middleware/rate-limit";
-import { generateTwoFactorSecret, verifyTwoFactorToken, verifyBackupCode } from "./utils/two-factor";
+import { generateSecret, verifyTOTP, generateOTPAuthURL } from "./utils/totp";
+import { generateBackupCodes, storeBackupCodes } from "./utils/two-factor";
 
 declare global {
   namespace Express {
@@ -83,11 +84,23 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
-      const { secret, codes } = await generateTwoFactorSecret(req.user.id);
+      const secret = generateSecret();
+      const backupCodes = await generateBackupCodes();
+      await storeBackupCodes(req.user.id, backupCodes);
+
+      // Generate otpauth URL using the standardized format
+      const otpauthUrl = generateOTPAuthURL(
+        req.user.username,
+        secret,
+        'AuthApp'
+      );
+
+      await storage.updateUserTwoFactor(req.user.id, secret);
+
       res.json({ 
         secret,
-        otpauth_url: `otpauth://totp/${req.user.username}?secret=${secret}&issuer=AuthApp`,
-        backup_codes: codes
+        otpauth_url: otpauthUrl,
+        backup_codes: backupCodes
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to setup 2FA" });
@@ -105,11 +118,12 @@ export function setupAuth(app: Express) {
       return res.status(400).json({ message: "2FA is not enabled" });
     }
 
-    const isValid = verifyTwoFactorToken(user.twoFactorSecret, token);
+    const isValid = verifyTOTP(token, user.twoFactorSecret);
     if (!isValid) {
       return res.status(400).json({ message: "Invalid token" });
     }
 
+    await storage.enableTwoFactor(user.id);
     res.json({ message: "2FA verified successfully" });
   });
 

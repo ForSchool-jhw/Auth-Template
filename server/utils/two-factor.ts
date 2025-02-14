@@ -4,6 +4,24 @@ import { users, backupCodes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 
+// Generate an array of backup codes
+export async function generateBackupCodes(): Promise<string[]> {
+  return Array.from({ length: 10 }, () =>
+    crypto.randomBytes(4).toString("hex").toUpperCase()
+  );
+}
+
+// Store backup codes for a user
+export async function storeBackupCodes(userId: number, codes: string[]) {
+  await db.insert(backupCodes).values(
+    codes.map((code) => ({
+      userId,
+      code,
+      used: false,
+    }))
+  );
+}
+
 export async function generateTwoFactorSecret(userId: number) {
   const secret = authenticator.generateSecret();
   await db
@@ -11,22 +29,12 @@ export async function generateTwoFactorSecret(userId: number) {
     .set({ twoFactorSecret: secret, twoFactorEnabled: true })
     .where(eq(users.id, userId));
 
-  // Generate backup codes
-  const codes = Array.from({ length: 10 }, () => 
-    crypto.randomBytes(4).toString("hex").toUpperCase()
-  );
-
-  await db.insert(backupCodes).values(
-    codes.map(code => ({
-      userId,
-      code,
-      used: false
-    }))
-  );
+  const codes = await generateBackupCodes();
+  await storeBackupCodes(userId, codes);
 
   return {
     secret,
-    codes
+    codes,
   };
 }
 
