@@ -14,11 +14,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/hooks/use-auth";
-import { Redirect, useLocation } from "wouter";
+import { Redirect } from "wouter";
 import { Loader2, UserPlus, LogIn } from "lucide-react";
-import { SiGithub } from "react-icons/si";
-import { OAuthErrorTooltip } from "@/components/ui/oauth-error-tooltip";
-import { useEffect, useState } from "react";
 
 const formSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
@@ -32,16 +29,6 @@ const formSchema = z.object({
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
-  const [oauthError, setOauthError] = useState<string | null>(null);
-
-  // Get error from URL parameters
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get('error');
-    if (error) {
-      setOauthError(error);
-    }
-  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -62,11 +49,6 @@ export default function AuthPage() {
           <CardHeader className="text-center">
             <h1 className="text-2xl font-bold text-foreground">Welcome</h1>
             <p className="text-muted-foreground">Sign in or create an account to continue</p>
-            {oauthError && (
-              <div className="mt-4">
-                <OAuthErrorTooltip error={oauthError} />
-              </div>
-            )}
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login">
@@ -76,145 +58,99 @@ export default function AuthPage() {
               </TabsList>
 
               <TabsContent value="login">
-                <div className="space-y-4">
-                  {/* Social Login Button */}
-                  <Button
-                    variant="outline"
-                    onClick={() => window.location.href = "/api/auth/github"}
-                    className="w-full"
+                <Form {...form}>
+                  <form
+                    onSubmit={form.handleSubmit((data) => loginMutation.mutate(data))}
+                    className="space-y-4"
                   >
-                    <SiGithub className="mr-2 h-4 w-4" />
-                    Continue with GitHub
-                  </Button>
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Or continue with
-                      </span>
-                    </div>
-                  </div>
-
-                  <Form {...form}>
-                    <form
-                      onSubmit={form.handleSubmit((data) => loginMutation.mutate(data))}
-                      className="space-y-4"
+                    <FormField
+                      control={form.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Username</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <Input type="password" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={loginMutation.isPending}
                     >
-                      <FormField
-                        control={form.control}
-                        name="username"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Username</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Password</FormLabel>
-                            <FormControl>
-                              <Input type="password" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={loginMutation.isPending}
-                      >
-                        {loginMutation.isPending ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <LogIn className="mr-2 h-4 w-4" />
-                        )}
-                        Login
-                      </Button>
-                    </form>
-                  </Form>
-                </div>
+                      {loginMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <LogIn className="mr-2 h-4 w-4" />
+                      )}
+                      Login
+                    </Button>
+                  </form>
+                </Form>
               </TabsContent>
 
               <TabsContent value="register">
-                <div className="space-y-4">
-                  {/* Social Registration Button */}
-                  <Button
-                    variant="outline"
-                    onClick={() => window.location.href = "/api/auth/github"}
-                    className="w-full"
+                <Form {...form}>
+                  <form
+                    onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))}
+                    className="space-y-4"
                   >
-                    <SiGithub className="mr-2 h-4 w-4" />
-                    Continue with GitHub
-                  </Button>
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Or continue with
-                      </span>
-                    </div>
-                  </div>
-
-                  <Form {...form}>
-                    <form
-                      onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))}
-                      className="space-y-4"
+                    <FormField
+                      control={form.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Username</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <Input type="password" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={registerMutation.isPending}
                     >
-                      <FormField
-                        control={form.control}
-                        name="username"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Username</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Password</FormLabel>
-                            <FormControl>
-                              <Input type="password" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={registerMutation.isPending}
-                      >
-                        {registerMutation.isPending ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <UserPlus className="mr-2 h-4 w-4" />
-                        )}
-                        Register
-                      </Button>
-                    </form>
-                  </Form>
-                </div>
+                      {registerMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <UserPlus className="mr-2 h-4 w-4" />
+                      )}
+                      Register
+                    </Button>
+                  </form>
+                </Form>
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -232,7 +168,7 @@ export default function AuthPage() {
               <div className="h-8 w-8 rounded-full bg-primary-foreground/10 flex items-center justify-center mr-3">
                 ✓
               </div>
-              GitHub Integration
+              Advanced password protection
             </li>
             <li className="flex items-center">
               <div className="h-8 w-8 rounded-full bg-primary-foreground/10 flex items-center justify-center mr-3">

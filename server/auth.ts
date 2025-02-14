@@ -1,6 +1,5 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as GitHubStrategy } from "passport-github2";
 import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -51,49 +50,6 @@ export function setupAuth(app: Express) {
   app.use(passport.session());
   app.use("/api", apiRateLimiter);
 
-  // GitHub Strategy with better error handling
-  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-    console.warn("GitHub OAuth credentials not found. GitHub authentication will not work.");
-  } else {
-    // Determine if we're in production by checking if we're running on Replit
-    const isProduction = process.env.REPL_SLUG && process.env.REPL_OWNER;
-    const callbackURL = isProduction
-      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co/api/auth/github/callback`
-      : "http://localhost:5000/api/auth/github/callback";
-
-    console.log('Environment:', isProduction ? 'production' : 'development');
-    console.log('Configuring GitHub strategy with callback URL:', callbackURL);
-    console.log('GitHub Client ID:', process.env.GITHUB_CLIENT_ID ? 'Present' : 'Missing');
-    console.log('GitHub Client Secret:', process.env.GITHUB_CLIENT_SECRET ? 'Present' : 'Missing');
-
-    passport.use(
-      new GitHubStrategy(
-        {
-          clientID: process.env.GITHUB_CLIENT_ID,
-          clientSecret: process.env.GITHUB_CLIENT_SECRET,
-          callbackURL,
-        },
-        async (accessToken: string, refreshToken: string, profile: any, done: any) => {
-          try {
-            console.log(`GitHub auth attempt for profile ID: ${profile.id}`);
-            let user = await storage.getUserByUsername(`github:${profile.id}`);
-            if (!user) {
-              console.log(`Creating new user for GitHub profile ID: ${profile.id}`);
-              user = await storage.createUser({
-                username: `github:${profile.id}`,
-                password: await hashPassword(randomBytes(32).toString("hex")),
-              });
-            }
-            return done(null, user);
-          } catch (err) {
-            console.error('Error in GitHub authentication:', err);
-            return done(err);
-          }
-        }
-      )
-    );
-  }
-
   passport.serializeUser((user, done) => {
     done(null, user.id);
   });
@@ -110,37 +66,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // GitHub auth routes with better error logging
-  app.get("/api/auth/github", (req, res, next) => {
-    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-      res.status(503).json({ message: "GitHub authentication is not configured" });
-      return;
-    }
-    console.log('Initiating GitHub authentication flow');
-    passport.authenticate("github", {
-      scope: ['user:email'],
-      state: randomBytes(16).toString('hex')
-    })(req, res, next);
-  });
-
-  app.get(
-    "/api/auth/github/callback",
-    (req, res, next) => {
-      console.log('Received GitHub callback with query:', req.query);
-      if (req.query.error) {
-        console.error('GitHub OAuth error:', req.query.error);
-        console.error('Error description:', req.query.error_description);
-        return res.redirect('/auth?error=' + encodeURIComponent(req.query.error_description as string));
-      }
-
-      passport.authenticate("github", {
-        successRedirect: "/",
-        failureRedirect: "/auth",
-        failureMessage: true
-      })(req, res, next);
-    }
-  );
-
   // Local Strategy
   passport.use(
     new LocalStrategy(async (username, password, done) => {
@@ -155,6 +80,7 @@ export function setupAuth(app: Express) {
       }
     }),
   );
+
   app.post("/api/2fa/setup", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
