@@ -142,6 +142,9 @@ export default function HomePage() {
             authCodes.map((code) => (
               <Card key={code.id} className="p-6">
                 <h3 className="font-semibold mb-2">{code.serviceName}</h3>
+                <div className="font-mono text-2xl mb-4 text-primary">
+                  {code.currentCode}
+                </div>
                 <p className="text-sm text-muted-foreground">
                   Added on {new Date(code.createdAt).toLocaleDateString()}
                 </p>
@@ -196,8 +199,8 @@ export default function HomePage() {
                     </FormItem>
                   )}
                 />
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full"
                   disabled={createAuthCodeMutation.isPending}
                 >

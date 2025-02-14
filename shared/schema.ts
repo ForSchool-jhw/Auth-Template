@@ -31,6 +31,7 @@ export const authCodes = pgTable("auth_codes", {
   userId: integer("user_id").references(() => users.id),
   serviceName: text("service_name").notNull(),
   secretKey: text("secret_key").notNull(),
+  totpSecret: text("totp_secret").notNull().default(''),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
